@@ -1,0 +1,274 @@
+blueprint:
+  name: RVM Push (Home Assistant app)
+  description: >
+    Pushmeldingen naar de Home Assistant Companion App (notify.mobile_app_*).
+    - Triggert op binary_sensors (off -> on)
+    - Optioneel hold-for tegen flapping
+    - Cooldown tegen spam
+    - Tot 5 telefoons
+    - Deeplink naar de betreffende entiteit
+  domain: automation
+
+  input:
+    master_enable:
+      name: Master: meldingen aan/uit
+      selector:
+        entity:
+          domain: input_boolean
+
+    triggers:
+      name: Trigger entiteiten (binary_sensors)
+      selector:
+        entity:
+          domain: binary_sensor
+          multiple: true
+
+    hold_for:
+      name: Pas melden als het X tijd aan blijft
+      default: "00:00:00"
+      selector:
+        duration: {}
+
+    cooldown_minutes:
+      name: Cooldown (minuten)
+      default: 15
+      selector:
+        number:
+          min: 0
+          max: 240
+          mode: slider
+          unit_of_measurement: min
+
+    title:
+      name: Titel
+      default: "RVM"
+      selector:
+        text: {}
+
+    prefix:
+      name: Prefix in bericht
+      description: Bijvoorbeeld "Bijna vol", "Vol", "Storing"
+      default: ""
+      selector:
+        text: {}
+
+    high_priority:
+      name: Hoge prioriteit
+      description: Zet aan voor storing/vol.
+      default: false
+      selector:
+        boolean: {}
+
+    # Telefoons (Companion App notify services)
+    phone1_service:
+      name: Telefoon 1 notify service
+      description: Bijvoorbeeld notify.mobile_app_raymond_phone
+      default: ""
+      selector:
+        text: {}
+    phone1_enable:
+      name: Telefoon 1 aan/uit
+      selector:
+        entity:
+          domain: input_boolean
+
+    phone2_service:
+      name: Telefoon 2 notify service
+      default: ""
+      selector:
+        text: {}
+    phone2_enable:
+      name: Telefoon 2 aan/uit
+      selector:
+        entity:
+          domain: input_boolean
+
+    phone3_service:
+      name: Telefoon 3 notify service
+      default: ""
+      selector:
+        text: {}
+    phone3_enable:
+      name: Telefoon 3 aan/uit
+      selector:
+        entity:
+          domain: input_boolean
+
+    phone4_service:
+      name: Telefoon 4 notify service
+      default: ""
+      selector:
+        text: {}
+    phone4_enable:
+      name: Telefoon 4 aan/uit
+      selector:
+        entity:
+          domain: input_boolean
+
+    phone5_service:
+      name: Telefoon 5 notify service
+      default: ""
+      selector:
+        text: {}
+    phone5_enable:
+      name: Telefoon 5 aan/uit
+      selector:
+        entity:
+          domain: input_boolean
+
+mode: queued
+max: 10
+
+trigger:
+  - platform: state
+    entity_id: !input triggers
+    from: "off"
+    to: "on"
+    for: !input hold_for
+
+condition:
+  - condition: state
+    entity_id: !input master_enable
+    state: "on"
+
+  # Cooldown per automation (globaal), voorkomt spam bij flapping of meerdere updates.
+  - condition: template
+    value_template: >
+      {% set cd = ( !input cooldown_minutes ) | int(0) %}
+      {% if cd == 0 %}
+        true
+      {% else %}
+        {% set last = state_attr(this.entity_id, 'last_triggered') %}
+        {% if last is none %}
+          true
+        {% else %}
+          {{ (now() - last).total_seconds() > (cd * 60) }}
+        {% endif %}
+      {% endif %}
+
+action:
+  - variables:
+      ent: "{{ trigger.entity_id }}"
+      friendly: "{{ state_attr(ent, 'friendly_name') or ent }}"
+      pfx: !input prefix
+
+      # Optionele attributen (als integratie ze meegeeft)
+      machine: "{{ state_attr(ent, 'machine_name') or '' }}"
+      bin_no: "{{ state_attr(ent, 'bin_no') or '' }}"
+      material: "{{ state_attr(ent, 'material') or state_attr(ent, 'materiaal') or '' }}"
+      count: "{{ state_attr(ent, 'count') or state_attr(ent, 'aantal') or '' }}"
+      fill_pct: "{{ state_attr(ent, 'fill_pct') or state_attr(ent, 'vulling_pct') or '' }}"
+
+      message: >-
+        {% if pfx|length > 0 %}{{ pfx }}: {% endif %}{{ friendly }}.
+        {%- if machine %} Machine: {{ machine }}.{% endif -%}
+        {%- if bin_no %} Bin: {{ bin_no }}.{% endif -%}
+        {%- if material %} Materiaal: {{ material }}.{% endif -%}
+        {%- if count != '' %} Aantal: {{ count }} stuks.{% endif -%}
+        {%- if fill_pct != '' %} Vulling: {{ fill_pct }}%.{% endif -%}
+
+      # Deeplink naar entiteit in de app
+      url: "entityId:{{ ent }}"
+
+      prio: "{{ 'high' if ( !input high_priority ) else 'normal' }}"
+
+  # stuur naar telefoon 1..5 als enable aan staat en service ingevuld
+  - choose:
+      - conditions:
+          - condition: state
+            entity_id: !input phone1_enable
+            state: "on"
+          - condition: template
+            value_template: "{{ ( !input phone1_service ) | string | length > 0 }}"
+        sequence:
+          - service: !input phone1_service
+            data:
+              title: !input title
+              message: "{{ message }}"
+              data:
+                url: "{{ url }}"
+                push:
+                  sound: default
+                  interruption-level: "{{ prio }}"
+                ttl: 0
+                priority: high
+
+  - choose:
+      - conditions:
+          - condition: state
+            entity_id: !input phone2_enable
+            state: "on"
+          - condition: template
+            value_template: "{{ ( !input phone2_service ) | string | length > 0 }}"
+        sequence:
+          - service: !input phone2_service
+            data:
+              title: !input title
+              message: "{{ message }}"
+              data:
+                url: "{{ url }}"
+                push:
+                  sound: default
+                  interruption-level: "{{ prio }}"
+                ttl: 0
+                priority: high
+
+  - choose:
+      - conditions:
+          - condition: state
+            entity_id: !input phone3_enable
+            state: "on"
+          - condition: template
+            value_template: "{{ ( !input phone3_service ) | string | length > 0 }}"
+        sequence:
+          - service: !input phone3_service
+            data:
+              title: !input title
+              message: "{{ message }}"
+              data:
+                url: "{{ url }}"
+                push:
+                  sound: default
+                  interruption-level: "{{ prio }}"
+                ttl: 0
+                priority: high
+
+  - choose:
+      - conditions:
+          - condition: state
+            entity_id: !input phone4_enable
+            state: "on"
+          - condition: template
+            value_template: "{{ ( !input phone4_service ) | string | length > 0 }}"
+        sequence:
+          - service: !input phone4_service
+            data:
+              title: !input title
+              message: "{{ message }}"
+              data:
+                url: "{{ url }}"
+                push:
+                  sound: default
+                  interruption-level: "{{ prio }}"
+                ttl: 0
+                priority: high
+
+  - choose:
+      - conditions:
+          - condition: state
+            entity_id: !input phone5_enable
+            state: "on"
+          - condition: template
+            value_template: "{{ ( !input phone5_service ) | string | length > 0 }}"
+        sequence:
+          - service: !input phone5_service
+            data:
+              title: !input title
+              message: "{{ message }}"
+              data:
+                url: "{{ url }}"
+                push:
+                  sound: default
+                  interruption-level: "{{ prio }}"
+                ttl: 0
+                priority: high
