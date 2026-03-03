@@ -11,115 +11,112 @@ blueprint:
   domain: automation
   source_url: "https://github.com/Raymondgijzen/Envipco_Eportal/blob/main/blueprints/automation/rvm/rvm_push_hass_app.yaml"
 
-input:
-  master_enable:
-    name: "Master: meldingen aan/uit"
-    selector:
-      entity:
-        domain: input_boolean
+  input:
+    master_enable:
+      name: "Master: meldingen aan/uit"
+      selector:
+        entity:
+          domain: input_boolean
 
-  triggers:
-    name: "Trigger entiteiten (binary_sensors)"
-    selector:
-      entity:
-        domain: binary_sensor
-        multiple: true
+    triggers:
+      name: "Trigger entiteiten (binary_sensors)"
+      selector:
+        entity:
+          domain: binary_sensor
+          multiple: true
 
-  hold_for:
-    name: "Pas melden als het X tijd aan blijft"
-    default:
-      hours: 0
-      minutes: 0
-      seconds: 0
-    selector:
-      duration: {}
+    hold_for:
+      name: "Pas melden als het X tijd aan blijft"
+      default: "00:00:00"
+      selector:
+        duration: {}
 
-  cooldown_minutes:
-    name: "Cooldown (minuten)"
-    default: 15
-    selector:
-      number:
-        min: 0
-        max: 240
-        step: 1
-        mode: slider
-        unit_of_measurement: "min"
+    cooldown_minutes:
+      name: "Cooldown (minuten)"
+      default: 15
+      selector:
+        number:
+          min: 0
+          max: 240
+          step: 1
+          mode: slider
+          unit_of_measurement: "min"
 
-  title:
-    name: "Titel"
-    default: "RVM"
-    selector:
-      text: {}
+    title:
+      name: "Titel"
+      default: "RVM"
+      selector:
+        text: {}
 
-  prefix:
-    name: "Prefix in bericht"
-    description: "Bijvoorbeeld: Bijna vol, Vol, Storing"
-    default: ""
-    selector:
-      text: {}
+    prefix:
+      name: "Prefix in bericht"
+      description: "Bijvoorbeeld: Bijna vol, Vol, Storing"
+      default: ""
+      selector:
+        text: {}
 
-  high_priority:
-    name: "Hoge prioriteit"
-    description: "Zet aan voor storing/vol."
-    default: false
-    selector:
-      boolean: {}
+    high_priority:
+      name: "Hoge prioriteit"
+      description: "Zet aan voor storing/vol."
+      default: false
+      selector:
+        boolean: {}
 
-  phone1_service:
-    name: "Telefoon 1 notify service"
-    description: "Bijvoorbeeld: notify.mobile_app_raymond_phone"
-    default: ""
-    selector:
-      text: {}
-  phone1_enable:
-    name: "Telefoon 1 aan/uit"
-    selector:
-      entity:
-        domain: input_boolean
+    phone1_service:
+      name: "Telefoon 1 notify service"
+      description: "Bijvoorbeeld: notify.mobile_app_raymond_phone"
+      default: ""
+      selector:
+        text: {}
+    phone1_enable:
+      name: "Telefoon 1 aan/uit"
+      selector:
+        entity:
+          domain: input_boolean
 
-  phone2_service:
-    name: "Telefoon 2 notify service"
-    default: ""
-    selector:
-      text: {}
-  phone2_enable:
-    name: "Telefoon 2 aan/uit"
-    selector:
-      entity:
-        domain: input_boolean
+    phone2_service:
+      name: "Telefoon 2 notify service"
+      default: ""
+      selector:
+        text: {}
+    phone2_enable:
+      name: "Telefoon 2 aan/uit"
+      selector:
+        entity:
+          domain: input_boolean
 
-  phone3_service:
-    name: "Telefoon 3 notify service"
-    default: ""
-    selector:
-      text: {}
-  phone3_enable:
-    name: "Telefoon 3 aan/uit"
-    selector:
-      entity:
-        domain: input_boolean
+    phone3_service:
+      name: "Telefoon 3 notify service"
+      default: ""
+      selector:
+        text: {}
+    phone3_enable:
+      name: "Telefoon 3 aan/uit"
+      selector:
+        entity:
+          domain: input_boolean
 
-  phone4_service:
-    name: "Telefoon 4 notify service"
-    default: ""
-    selector:
-      text: {}
-  phone4_enable:
-    name: "Telefoon 4 aan/uit"
-    selector:
-      entity:
-        domain: input_boolean
+    phone4_service:
+      name: "Telefoon 4 notify service"
+      default: ""
+      selector:
+        text: {}
+    phone4_enable:
+      name: "Telefoon 4 aan/uit"
+      selector:
+        entity:
+          domain: input_boolean
 
-  phone5_service:
-    name: "Telefoon 5 notify service"
-    default: ""
-    selector:
-      text: {}
-  phone5_enable:
-    name: "Telefoon 5 aan/uit"
-    selector:
-      entity:
-        domain: input_boolean
+    phone5_service:
+      name: "Telefoon 5 notify service"
+      default: ""
+      selector:
+        text: {}
+    phone5_enable:
+      name: "Telefoon 5 aan/uit"
+      selector:
+        entity:
+          domain: input_boolean
 
 mode: queued
 max: 10
