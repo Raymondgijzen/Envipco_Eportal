@@ -11,8 +11,8 @@ CONF_MACHINES = "machines"  # list[{"id": "...", "name": "..."}]
 
 # per machine rates stored in entry.options
 CONF_MACHINE_RATES = "machine_rates"  # dict[rvm_id] = {"can": float, "pet": float}
-DEFAULT_RATE_CAN = 0.15
-DEFAULT_RATE_PET = 0.25
+DEFAULT_RATE_CAN = 0.0107
+DEFAULT_RATE_PET = 0.0331
 
 DEFAULT_SCAN_INTERVAL = 300  # seconds
 
