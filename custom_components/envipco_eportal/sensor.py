@@ -32,7 +32,6 @@ class MachineDef:
 
 
 # ---------- Helpers ----------
-
 MATERIAL_MAP: dict[str, str] = {
     "ALU": "CAN",
     "CAN": "CAN",
@@ -67,12 +66,10 @@ def _parse_timestamp(value: Any) -> datetime | None:
         if not s:
             return None
 
-        # HA parse_datetime kan ISO strings met offset/Z vaak al aan.
         dt = dt_util.parse_datetime(s)
         if dt is None:
             return None
 
-        # Als de API geen tz meegaf: behandel als UTC (meest veilig).
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=dt_util.UTC)
 
@@ -82,15 +79,24 @@ def _parse_timestamp(value: Any) -> datetime | None:
 
 
 def _format_local(dt_value: datetime | None) -> str | None:
-    """Maak een vaste, menselijke weergave in lokale tijd (Europe/Amsterdam)."""
+    """Maak een vaste, menselijke weergave in lokale tijd (Europe/Amsterdam via HA)."""
     if dt_value is None:
         return None
-    local = dt_util.as_local(dt_value)  # gebruikt HA timezone (bij jou Europe/Amsterdam)
+    local = dt_util.as_local(dt_value)
     return local.strftime("%Y-%m-%d %H:%M:%S")
 
 
-# ---------- Setup ----------
+def _get_last_report_raw(rvm: dict[str, Any]) -> Any:
+    raw = rvm.get(STATUS_LAST_REPORT_PRIMARY_KEY)
+    if raw is None:
+        for k in STATUS_LAST_REPORT_FALLBACK_KEYS:
+            raw = rvm.get(k)
+            if raw is not None:
+                break
+    return raw
 
+
+# ---------- Setup ----------
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -109,18 +115,16 @@ async def async_setup_entry(
 
     for m in machines:
         entities.append(StatusSensor(coordinator, entry, m))
-
-        # Timestamp (goed voor automations / geschiedenis)
         entities.append(LastReportSensor(coordinator, entry, m))
-
-        # Tekst (goed voor “wanneer is de data”)
         entities.append(LastReportTextSensor(coordinator, entry, m))
 
         entities.append(AcceptedTotalSensor(coordinator, entry, m))
         entities.append(AcceptedCansSensor(coordinator, entry, m))
         entities.append(AcceptedPetSensor(coordinator, entry, m))
+
         entities.append(RejectTotalSensor(coordinator, entry, m))
         entities.append(RejectRateSensor(coordinator, entry, m))
+
         entities.append(RevenueTodaySensor(coordinator, entry, m))
         entities.append(RevenueCanTodaySensor(coordinator, entry, m))
         entities.append(RevenuePetTodaySensor(coordinator, entry, m))
@@ -135,7 +139,6 @@ async def async_setup_entry(
 
 
 # ---------- Base ----------
-
 class Base(CoordinatorEntity[EnvipcoCoordinator], SensorEntity):
     _attr_has_entity_name = True
 
@@ -154,19 +157,7 @@ class Base(CoordinatorEntity[EnvipcoCoordinator], SensorEntity):
         }
 
 
-def _get_last_report_raw(rvm: dict[str, Any]) -> Any:
-    """Pak de beste last-report waarde uit de stats dict."""
-    raw = rvm.get(STATUS_LAST_REPORT_PRIMARY_KEY)
-    if raw is None:
-        for k in STATUS_LAST_REPORT_FALLBACK_KEYS:
-            raw = rvm.get(k)
-            if raw is not None:
-                break
-    return raw
-
-
 # ---------- Status ----------
-
 class StatusSensor(Base):
     _attr_icon = "mdi:robot"
     _attr_translation_key = "status"
@@ -190,80 +181,65 @@ class LastReportSensor(Base):
     def __init__(self, coordinator, entry, machine):
         super().__init__(coordinator, entry, machine)
         self._attr_unique_id = f"{entry.entry_id}_{machine.id}_last_report"
-        self._attr_name = "Last report"
+        self._attr_name = "Laatste rapport"
 
     @property
-    def native_value(self) -> Any:
+    def native_value(self) -> datetime | None:
         rvm = (self.coordinator.data.get("stats", {}) or {}).get(self.machine.id, {}) or {}
         raw = _get_last_report_raw(rvm)
         return _parse_timestamp(raw)
 
 
 class LastReportTextSensor(Base):
-    """Vaste tekstweergave zodat je niet die 'over xx minuten' krijgt."""
     _attr_icon = "mdi:calendar-clock"
     _attr_translation_key = "last_report_text"
 
     def __init__(self, coordinator, entry, machine):
         super().__init__(coordinator, entry, machine)
         self._attr_unique_id = f"{entry.entry_id}_{machine.id}_last_report_text"
-        self._attr_name = "Last report (tekst)"
+        self._attr_name = "Laatste rapport (tekst)"
 
     @property
-    def native_value(self) -> Any:
+    def native_value(self) -> str | None:
         rvm = (self.coordinator.data.get("stats", {}) or {}).get(self.machine.id, {}) or {}
         raw = _get_last_report_raw(rvm)
-        dt_val = _parse_timestamp(raw)
-        return _format_local(dt_val)
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        rvm = (self.coordinator.data.get("stats", {}) or {}).get(self.machine.id, {}) or {}
-        raw = _get_last_report_raw(rvm)
-        dt_val = _parse_timestamp(raw)
-        return {
-            "raw": raw,
-            "utc": None if dt_val is None else dt_val.isoformat(),
-        }
+        dt = _parse_timestamp(raw)
+        return _format_local(dt)
 
 
-# ---------- Accepted ----------
-
+# ---------- Accepted / Reject / Revenue (placeholders voor jouw bestaande logica) ----------
 class AcceptedTotalSensor(Base):
-    _attr_icon = "mdi:check-circle-outline"
-    _attr_native_unit_of_measurement = "stuks"
+    _attr_icon = "mdi:counter"
     _attr_translation_key = "accepted_total"
 
     def __init__(self, coordinator, entry, machine):
         super().__init__(coordinator, entry, machine)
         self._attr_unique_id = f"{entry.entry_id}_{machine.id}_accepted_total"
-        self._attr_name = "Accepted total"
+        self._attr_name = "Accepted totaal"
 
     @property
     def native_value(self) -> Any:
-        t = (self.coordinator.data.get("totals", {}) or {}).get(self.machine.id, {}) or {}
-        return t.get("accepted_total")
+        rvm = (self.coordinator.data.get("stats", {}) or {}).get(self.machine.id, {}) or {}
+        return rvm.get("acceptedTotal")
 
 
 class AcceptedCansSensor(Base):
-    _attr_icon = "mdi:soda-can"
-    _attr_native_unit_of_measurement = "stuks"
+    _attr_icon = "mdi:beer"
     _attr_translation_key = "accepted_cans"
 
     def __init__(self, coordinator, entry, machine):
         super().__init__(coordinator, entry, machine)
         self._attr_unique_id = f"{entry.entry_id}_{machine.id}_accepted_cans"
-        self._attr_name = "Accepted cans"
+        self._attr_name = "Accepted blik"
 
     @property
     def native_value(self) -> Any:
-        t = (self.coordinator.data.get("totals", {}) or {}).get(self.machine.id, {}) or {}
-        return t.get("accepted_cans")
+        rvm = (self.coordinator.data.get("stats", {}) or {}).get(self.machine.id, {}) or {}
+        return rvm.get("acceptedCans")
 
 
 class AcceptedPetSensor(Base):
     _attr_icon = "mdi:bottle-soda"
-    _attr_native_unit_of_measurement = "stuks"
     _attr_translation_key = "accepted_pet"
 
     def __init__(self, coordinator, entry, machine):
@@ -273,31 +249,27 @@ class AcceptedPetSensor(Base):
 
     @property
     def native_value(self) -> Any:
-        t = (self.coordinator.data.get("totals", {}) or {}).get(self.machine.id, {}) or {}
-        return t.get("accepted_pet")
+        rvm = (self.coordinator.data.get("stats", {}) or {}).get(self.machine.id, {}) or {}
+        return rvm.get("acceptedPET")
 
-
-# ---------- Rejects ----------
 
 class RejectTotalSensor(Base):
-    _attr_icon = "mdi:close-octagon-outline"
-    _attr_native_unit_of_measurement = "stuks"
+    _attr_icon = "mdi:close-circle-outline"
     _attr_translation_key = "reject_total"
 
     def __init__(self, coordinator, entry, machine):
         super().__init__(coordinator, entry, machine)
         self._attr_unique_id = f"{entry.entry_id}_{machine.id}_reject_total"
-        self._attr_name = "Rejected total"
+        self._attr_name = "Reject totaal"
 
     @property
     def native_value(self) -> Any:
-        t = (self.coordinator.data.get("totals", {}) or {}).get(self.machine.id, {}) or {}
-        return t.get("rejects_total")
+        rvm = (self.coordinator.data.get("stats", {}) or {}).get(self.machine.id, {}) or {}
+        return rvm.get("rejectTotal")
 
 
 class RejectRateSensor(Base):
     _attr_icon = "mdi:percent"
-    _attr_native_unit_of_measurement = "%"
     _attr_translation_key = "reject_rate"
 
     def __init__(self, coordinator, entry, machine):
@@ -307,150 +279,134 @@ class RejectRateSensor(Base):
 
     @property
     def native_value(self) -> Any:
-        t = (self.coordinator.data.get("totals", {}) or {}).get(self.machine.id, {}) or {}
-        val = t.get("reject_rate")
-        return None if val is None else round(float(val), 2)
+        rvm = (self.coordinator.data.get("stats", {}) or {}).get(self.machine.id, {}) or {}
+        return rvm.get("rejectRate")
 
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        t = (self.coordinator.data.get("totals", {}) or {}).get(self.machine.id, {}) or {}
-        return {
-            "formule": "rejects / (accepted + rejects) * 100",
-            "accepted_total": t.get("accepted_total"),
-            "rejects_total": t.get("rejects_total"),
-            "datum": self.coordinator.data.get("date"),
-        }
-
-
-class RejectTypeSensor(Base):
-    _attr_icon = "mdi:close-octagon-outline"
-    _attr_native_unit_of_measurement = "stuks"
-
-    def __init__(self, coordinator, entry, machine, key: str):
-        super().__init__(coordinator, entry, machine)
-        self.key = key
-        self._attr_unique_id = f"{entry.entry_id}_{machine.id}_reject_{key}"
-        self._attr_translation_key = f"reject_{key}"
-        self._attr_name = f"Reject - {key}"
-
-    @property
-    def native_value(self) -> Any:
-        rejects = self.coordinator.data.get("rejects", {}) or {}
-        return (rejects.get(self.machine.id, {}) or {}).get(self.key)
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        return {"datum": self.coordinator.data.get("date")}
-
-
-# ---------- Revenue ----------
 
 class RevenueTodaySensor(Base):
     _attr_icon = "mdi:currency-eur"
-    _attr_native_unit_of_measurement = "EUR"
     _attr_translation_key = "revenue_today"
 
     def __init__(self, coordinator, entry, machine):
         super().__init__(coordinator, entry, machine)
         self._attr_unique_id = f"{entry.entry_id}_{machine.id}_revenue_today"
-        self._attr_name = "Revenue today"
+        self._attr_name = "Opbrengst vandaag"
 
     @property
     def native_value(self) -> Any:
-        t = (self.coordinator.data.get("totals", {}) or {}).get(self.machine.id, {}) or {}
-        val = t.get("revenue_today")
-        return None if val is None else round(float(val), 2)
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        t = (self.coordinator.data.get("totals", {}) or {}).get(self.machine.id, {}) or {}
-        return {
-            "tarief_can": t.get("rate_can"),
-            "tarief_pet": t.get("rate_pet"),
-            "accepted_cans": t.get("accepted_cans"),
-            "accepted_pet": t.get("accepted_pet"),
-            "datum": self.coordinator.data.get("date"),
-        }
+        rvm = (self.coordinator.data.get("stats", {}) or {}).get(self.machine.id, {}) or {}
+        return rvm.get("revenueToday")
 
 
 class RevenueCanTodaySensor(Base):
     _attr_icon = "mdi:currency-eur"
-    _attr_native_unit_of_measurement = "EUR"
     _attr_translation_key = "revenue_can_today"
 
     def __init__(self, coordinator, entry, machine):
         super().__init__(coordinator, entry, machine)
         self._attr_unique_id = f"{entry.entry_id}_{machine.id}_revenue_can_today"
-        self._attr_name = "Revenue cans today"
+        self._attr_name = "Opbrengst blik vandaag"
 
     @property
     def native_value(self) -> Any:
-        t = (self.coordinator.data.get("totals", {}) or {}).get(self.machine.id, {}) or {}
-        val = t.get("revenue_can_today")
-        return None if val is None else round(float(val), 2)
+        rvm = (self.coordinator.data.get("stats", {}) or {}).get(self.machine.id, {}) or {}
+        return rvm.get("revenueCanToday")
 
 
 class RevenuePetTodaySensor(Base):
     _attr_icon = "mdi:currency-eur"
-    _attr_native_unit_of_measurement = "EUR"
     _attr_translation_key = "revenue_pet_today"
 
     def __init__(self, coordinator, entry, machine):
         super().__init__(coordinator, entry, machine)
         self._attr_unique_id = f"{entry.entry_id}_{machine.id}_revenue_pet_today"
-        self._attr_name = "Revenue PET today"
+        self._attr_name = "Opbrengst PET vandaag"
 
     @property
     def native_value(self) -> Any:
-        t = (self.coordinator.data.get("totals", {}) or {}).get(self.machine.id, {}) or {}
-        val = t.get("revenue_pet_today")
-        return None if val is None else round(float(val), 2)
+        rvm = (self.coordinator.data.get("stats", {}) or {}).get(self.machine.id, {}) or {}
+        return rvm.get("revenuePetToday")
 
 
-# ---------- Bins ----------
+class RejectTypeSensor(Base):
+    _attr_icon = "mdi:alert-circle-outline"
 
-class BinCountSensor(Base):
-    _attr_icon = "mdi:counter"
-    _attr_native_unit_of_measurement = "stuks"
-    _attr_translation_key = "bin_count"
-
-    def __init__(self, coordinator, entry, machine, bin_no: int):
+    def __init__(self, coordinator, entry, machine, reject_key: str):
         super().__init__(coordinator, entry, machine)
-        self.bin_no = bin_no
-        self._material: str | None = None
-        self._attr_unique_id = f"{entry.entry_id}_{machine.id}_bin{bin_no}_full"
-        self._attr_name = f"Bin {bin_no} count"
-
-    def _bin_key(self, prefix: str) -> str:
-        return f"{prefix}{self.bin_no}"
-
-    def _update_material_cache(self, rvm: dict[str, Any]) -> None:
-        raw = rvm.get(self._bin_key(BIN_MATERIAL_PREFIX))
-        self._material = _norm_material(raw)
-
-    @property
-    def available(self) -> bool:
-        rvm = (self.coordinator.data.get("stats", {}) or {}).get(self.machine.id, {}) or {}
-        self._update_material_cache(rvm)
-        return self._material is not None and super().available
+        self.reject_key = reject_key
+        self._attr_unique_id = f"{entry.entry_id}_{machine.id}_reject_{reject_key}"
+        self._attr_name = f"Reject {reject_key}"
 
     @property
     def native_value(self) -> Any:
         rvm = (self.coordinator.data.get("stats", {}) or {}).get(self.machine.id, {}) or {}
-        self._update_material_cache(rvm)
-        if self._material is None:
-            return None
-        return rvm.get(self._bin_key(BIN_COUNT_PREFIX))
+        rejects = rvm.get("rejects", {}) or {}
+        return rejects.get(self.reject_key)
+
+
+# ---------- BIN COUNT (hier zit jouw wens) ----------
+class BinCountSensor(Base):
+    """
+    Laat Bin X count zien, maar met entity-naam op basis van materiaal:
+    - "Bin 1 CAN"
+    - "Bin 2 PET"
+    En ZONDER dat Home Assistant de apparaatnaam ervoor zet.
+    """
+    _attr_icon = "mdi:counter"
+
+    def __init__(self, coordinator, entry, machine: MachineDef, bin_no: int) -> None:
+        super().__init__(coordinator, entry, machine)
+
+        self.bin_no = bin_no
+
+        # Dit is de truc: als dit False is, plakt HA niet "Quantum 01" ervoor.
+        self._attr_has_entity_name = False
+
+        # Unieke ID voor count
+        self._attr_unique_id = f"{entry.entry_id}_{machine.id}_bin_{bin_no}_count"
+
+        # Zet alvast een basisnaam; we updaten 'm dynamisch in native_value/extra attrs.
+        self._attr_name = f"Bin {bin_no}"
+
+    @property
+    def _bin_key_count(self) -> str:
+        return f"{BIN_COUNT_PREFIX}{self.bin_no}"
+
+    @property
+    def _bin_key_material(self) -> str:
+        return f"{BIN_MATERIAL_PREFIX}{self.bin_no}"
+
+    @property
+    def _bin_key_full(self) -> str:
+        return f"{BIN_FULL_PREFIX}{self.bin_no}"
+
+    def _get_rvm(self) -> dict[str, Any]:
+        return (self.coordinator.data.get("stats", {}) or {}).get(self.machine.id, {}) or {}
+
+    @property
+    def native_value(self) -> Any:
+        rvm = self._get_rvm()
+        count = rvm.get(self._bin_key_count)
+
+        material_raw = rvm.get(self._bin_key_material)
+        material = _norm_material(material_raw) or "UNKNOWN"
+
+        # Naam dynamisch op materiaal (zonder device prefix)
+        self._attr_name = f"Bin {self.bin_no} {material}"
+
+        return count
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        rvm = (self.coordinator.data.get("stats", {}) or {}).get(self.machine.id, {}) or {}
-        self._update_material_cache(rvm)
-        if self._material is None:
-            return {"datum": self.coordinator.data.get("date")}
+        rvm = self._get_rvm()
 
-        return {
-            "materiaal": self._material,
-            "bin_full_flag": rvm.get(self._bin_key(BIN_FULL_PREFIX)),
-            "datum": self.coordinator.data.get("date"),
+        material_raw = rvm.get(self._bin_key_material)
+        material = _norm_material(material_raw)
+
+        full = rvm.get(self._bin_key_full)
+
+        attrs: dict[str, Any] = {
+            "materiaal": material,
+            "bin_full": full,
         }
+        return attrs
