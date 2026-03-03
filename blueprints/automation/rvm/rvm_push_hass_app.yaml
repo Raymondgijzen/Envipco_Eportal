@@ -1,5 +1,5 @@
 blueprint:
-  name: RVM Push (Home Assistant app)
+  name: "RVM Push (Home Assistant app)"
   description: >
     Pushmeldingen naar de Home Assistant Companion App (notify.mobile_app_*).
 
@@ -9,111 +9,110 @@ blueprint:
     - Tot 5 telefoons
     - Deeplink naar de betreffende entiteit
   domain: automation
-  source_url: https://github.com/Raymondgijzen/Envipco_Eportal/blob/main/blueprints/automation/rvm/rvm_push_hass_app.yaml
+  source_url: "https://github.com/Raymondgijzen/Envipco_Eportal/blob/main/blueprints/automation/rvm/rvm_push_hass_app.yaml"
 
 input:
   master_enable:
-    name: Master: meldingen aan/uit
+    name: "Master: meldingen aan/uit"
     selector:
       entity:
         domain: input_boolean
 
   triggers:
-    name: Trigger entiteiten (binary_sensors)
+    name: "Trigger entiteiten (binary_sensors)"
     selector:
       entity:
         domain: binary_sensor
         multiple: true
 
   hold_for:
-    name: Pas melden als het X tijd aan blijft
+    name: "Pas melden als het X tijd aan blijft"
     default: "00:00:00"
     selector:
       duration: {}
 
   cooldown_minutes:
-    name: Cooldown (minuten)
+    name: "Cooldown (minuten)"
     default: 15
     selector:
       number:
         min: 0
         max: 240
         mode: slider
-        unit_of_measurement: min
+        unit_of_measurement: "min"
 
   title:
-    name: Titel
+    name: "Titel"
     default: "RVM"
     selector:
       text: {}
 
   prefix:
-    name: Prefix in bericht
-    description: Bijvoorbeeld "Bijna vol", "Vol", "Storing"
+    name: "Prefix in bericht"
+    description: "Bijvoorbeeld: Bijna vol, Vol, Storing"
     default: ""
     selector:
       text: {}
 
   high_priority:
-    name: Hoge prioriteit
-    description: Zet aan voor storing/vol.
+    name: "Hoge prioriteit"
+    description: "Zet aan voor storing/vol."
     default: false
     selector:
       boolean: {}
 
-  # Telefoons (Companion App notify services)
   phone1_service:
-    name: Telefoon 1 notify service
-    description: Bijvoorbeeld notify.mobile_app_raymond_phone
+    name: "Telefoon 1 notify service"
+    description: "Bijvoorbeeld: notify.mobile_app_raymond_phone"
     default: ""
     selector:
       text: {}
   phone1_enable:
-    name: Telefoon 1 aan/uit
+    name: "Telefoon 1 aan/uit"
     selector:
       entity:
         domain: input_boolean
 
   phone2_service:
-    name: Telefoon 2 notify service
+    name: "Telefoon 2 notify service"
     default: ""
     selector:
       text: {}
   phone2_enable:
-    name: Telefoon 2 aan/uit
+    name: "Telefoon 2 aan/uit"
     selector:
       entity:
         domain: input_boolean
 
   phone3_service:
-    name: Telefoon 3 notify service
+    name: "Telefoon 3 notify service"
     default: ""
     selector:
       text: {}
   phone3_enable:
-    name: Telefoon 3 aan/uit
+    name: "Telefoon 3 aan/uit"
     selector:
       entity:
         domain: input_boolean
 
   phone4_service:
-    name: Telefoon 4 notify service
+    name: "Telefoon 4 notify service"
     default: ""
     selector:
       text: {}
   phone4_enable:
-    name: Telefoon 4 aan/uit
+    name: "Telefoon 4 aan/uit"
     selector:
       entity:
         domain: input_boolean
 
   phone5_service:
-    name: Telefoon 5 notify service
+    name: "Telefoon 5 notify service"
     default: ""
     selector:
       text: {}
   phone5_enable:
-    name: Telefoon 5 aan/uit
+    name: "Telefoon 5 aan/uit"
     selector:
       entity:
         domain: input_boolean
@@ -121,7 +120,6 @@ input:
 mode: queued
 max: 10
 
-# Variabelen zodat we inputs wél netjes in templates kunnen gebruiken
 variables:
   cooldown_minutes: !input cooldown_minutes
   high_priority: !input high_priority
@@ -138,7 +136,6 @@ condition:
     entity_id: !input master_enable
     state: "on"
 
-  # Cooldown per automation (globaal), voorkomt spam bij flapping of meerdere updates.
   - condition: template
     value_template: >-
       {% set cd = cooldown_minutes | int(0) %}
@@ -159,7 +156,6 @@ action:
       friendly: "{{ state_attr(ent, 'friendly_name') or ent }}"
       pfx: !input prefix
 
-      # Optionele attributen (als integratie ze meegeeft)
       machine: "{{ state_attr(ent, 'machine_name') or '' }}"
       bin_no: "{{ state_attr(ent, 'bin_no') or '' }}"
       material: "{{ state_attr(ent, 'material') or state_attr(ent, 'materiaal') or '' }}"
@@ -174,12 +170,9 @@ action:
         {%- if count != '' %} Aantal: {{ count }} stuks.{% endif -%}
         {%- if fill_pct != '' %} Vulling: {{ fill_pct }}%.{% endif -%}
 
-      # Deeplink naar entiteit in de app
       url: "entityId:{{ ent }}"
-
       prio: "{{ 'high' if high_priority else 'normal' }}"
 
-  # Telefoon 1
   - choose:
       - conditions:
           - condition: state
@@ -195,10 +188,9 @@ action:
               data:
                 url: "{{ url }}"
                 push:
-                  sound: default
+                  sound: "default"
                   interruption-level: "{{ prio }}"
 
-  # Telefoon 2
   - choose:
       - conditions:
           - condition: state
@@ -214,10 +206,9 @@ action:
               data:
                 url: "{{ url }}"
                 push:
-                  sound: default
+                  sound: "default"
                   interruption-level: "{{ prio }}"
 
-  # Telefoon 3
   - choose:
       - conditions:
           - condition: state
@@ -233,10 +224,9 @@ action:
               data:
                 url: "{{ url }}"
                 push:
-                  sound: default
+                  sound: "default"
                   interruption-level: "{{ prio }}"
 
-  # Telefoon 4
   - choose:
       - conditions:
           - condition: state
@@ -252,10 +242,9 @@ action:
               data:
                 url: "{{ url }}"
                 push:
-                  sound: default
+                  sound: "default"
                   interruption-level: "{{ prio }}"
 
-  # Telefoon 5
   - choose:
       - conditions:
           - condition: state
@@ -271,5 +260,5 @@ action:
               data:
                 url: "{{ url }}"
                 push:
-                  sound: default
+                  sound: "default"
                   interruption-level: "{{ prio }}"
