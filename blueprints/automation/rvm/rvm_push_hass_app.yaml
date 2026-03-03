@@ -27,7 +27,10 @@ input:
 
   hold_for:
     name: "Pas melden als het X tijd aan blijft"
-    default: "00:00:00"
+    default:
+      hours: 0
+      minutes: 0
+      seconds: 0
     selector:
       duration: {}
 
@@ -38,6 +41,7 @@ input:
       number:
         min: 0
         max: 240
+        step: 1
         mode: slider
         unit_of_measurement: "min"
 
@@ -173,15 +177,21 @@ action:
       url: "entityId:{{ ent }}"
       prio: "{{ 'high' if high_priority else 'normal' }}"
 
+      phone1_service: !input phone1_service
+      phone2_service: !input phone2_service
+      phone3_service: !input phone3_service
+      phone4_service: !input phone4_service
+      phone5_service: !input phone5_service
+
   - choose:
       - conditions:
           - condition: state
             entity_id: !input phone1_enable
             state: "on"
           - condition: template
-            value_template: "{{ ( !input phone1_service ) | string | length > 0 }}"
+            value_template: "{{ (phone1_service | string | length) > 0 }}"
         sequence:
-          - service: !input phone1_service
+          - service: "{{ phone1_service }}"
             data:
               title: !input title
               message: "{{ message }}"
@@ -197,9 +207,9 @@ action:
             entity_id: !input phone2_enable
             state: "on"
           - condition: template
-            value_template: "{{ ( !input phone2_service ) | string | length > 0 }}"
+            value_template: "{{ (phone2_service | string | length) > 0 }}"
         sequence:
-          - service: !input phone2_service
+          - service: "{{ phone2_service }}"
             data:
               title: !input title
               message: "{{ message }}"
@@ -215,9 +225,9 @@ action:
             entity_id: !input phone3_enable
             state: "on"
           - condition: template
-            value_template: "{{ ( !input phone3_service ) | string | length > 0 }}"
+            value_template: "{{ (phone3_service | string | length) > 0 }}"
         sequence:
-          - service: !input phone3_service
+          - service: "{{ phone3_service }}"
             data:
               title: !input title
               message: "{{ message }}"
@@ -233,9 +243,9 @@ action:
             entity_id: !input phone4_enable
             state: "on"
           - condition: template
-            value_template: "{{ ( !input phone4_service ) | string | length > 0 }}"
+            value_template: "{{ (phone4_service | string | length) > 0 }}"
         sequence:
-          - service: !input phone4_service
+          - service: "{{ phone4_service }}"
             data:
               title: !input title
               message: "{{ message }}"
@@ -251,9 +261,9 @@ action:
             entity_id: !input phone5_enable
             state: "on"
           - condition: template
-            value_template: "{{ ( !input phone5_service ) | string | length > 0 }}"
+            value_template: "{{ (phone5_service | string | length) > 0 }}"
         sequence:
-          - service: !input phone5_service
+          - service: "{{ phone5_service }}"
             data:
               title: !input title
               message: "{{ message }}"
