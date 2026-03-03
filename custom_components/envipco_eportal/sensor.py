@@ -58,7 +58,6 @@ def _parse_timestamp(value: Any) -> datetime | None:
         return None
 
     if isinstance(value, datetime):
-        # Maak timezone-aware
         if value.tzinfo is None:
             return value.replace(tzinfo=dt_util.UTC)
         return dt_util.as_utc(value)
@@ -67,14 +66,27 @@ def _parse_timestamp(value: Any) -> datetime | None:
         s = value.strip()
         if not s:
             return None
+
+        # HA parse_datetime kan ISO strings met offset/Z vaak al aan.
         dt = dt_util.parse_datetime(s)
         if dt is None:
             return None
+
+        # Als de API geen tz meegaf: behandel als UTC (meest veilig).
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=dt_util.UTC)
+
         return dt_util.as_utc(dt)
 
     return None
+
+
+def _format_local(dt_value: datetime | None) -> str | None:
+    """Maak een vaste, menselijke weergave in lokale tijd (Europe/Amsterdam)."""
+    if dt_value is None:
+        return None
+    local = dt_util.as_local(dt_value)  # gebruikt HA timezone (bij jou Europe/Amsterdam)
+    return local.strftime("%Y-%m-%d %H:%M:%S")
 
 
 # ---------- Setup ----------
@@ -97,7 +109,13 @@ async def async_setup_entry(
 
     for m in machines:
         entities.append(StatusSensor(coordinator, entry, m))
+
+        # Timestamp (goed voor automations / geschiedenis)
         entities.append(LastReportSensor(coordinator, entry, m))
+
+        # Tekst (goed voor “wanneer is de data”)
+        entities.append(LastReportTextSensor(coordinator, entry, m))
+
         entities.append(AcceptedTotalSensor(coordinator, entry, m))
         entities.append(AcceptedCansSensor(coordinator, entry, m))
         entities.append(AcceptedPetSensor(coordinator, entry, m))
@@ -110,7 +128,6 @@ async def async_setup_entry(
         for key in REJECT_KEYS:
             entities.append(RejectTypeSensor(coordinator, entry, m, key))
 
-        # ePortal levert vaak 12 bins; ongebruikte bins hebben geen BinInfoMaterialBinX.
         for bin_no in range(1, 13):
             entities.append(BinCountSensor(coordinator, entry, m, bin_no))
 
@@ -135,6 +152,17 @@ class Base(CoordinatorEntity[EnvipcoCoordinator], SensorEntity):
             "manufacturer": "Envipco",
             "model": "RVM",
         }
+
+
+def _get_last_report_raw(rvm: dict[str, Any]) -> Any:
+    """Pak de beste last-report waarde uit de stats dict."""
+    raw = rvm.get(STATUS_LAST_REPORT_PRIMARY_KEY)
+    if raw is None:
+        for k in STATUS_LAST_REPORT_FALLBACK_KEYS:
+            raw = rvm.get(k)
+            if raw is not None:
+                break
+    return raw
 
 
 # ---------- Status ----------
@@ -167,18 +195,36 @@ class LastReportSensor(Base):
     @property
     def native_value(self) -> Any:
         rvm = (self.coordinator.data.get("stats", {}) or {}).get(self.machine.id, {}) or {}
-
-        # 1) Eerst jouw gewenste key
-        raw = rvm.get(STATUS_LAST_REPORT_PRIMARY_KEY)
-
-        # 2) Fallback(s)
-        if raw is None:
-            for k in STATUS_LAST_REPORT_FALLBACK_KEYS:
-                raw = rvm.get(k)
-                if raw is not None:
-                    break
-
+        raw = _get_last_report_raw(rvm)
         return _parse_timestamp(raw)
+
+
+class LastReportTextSensor(Base):
+    """Vaste tekstweergave zodat je niet die 'over xx minuten' krijgt."""
+    _attr_icon = "mdi:calendar-clock"
+    _attr_translation_key = "last_report_text"
+
+    def __init__(self, coordinator, entry, machine):
+        super().__init__(coordinator, entry, machine)
+        self._attr_unique_id = f"{entry.entry_id}_{machine.id}_last_report_text"
+        self._attr_name = "Last report (tekst)"
+
+    @property
+    def native_value(self) -> Any:
+        rvm = (self.coordinator.data.get("stats", {}) or {}).get(self.machine.id, {}) or {}
+        raw = _get_last_report_raw(rvm)
+        dt_val = _parse_timestamp(raw)
+        return _format_local(dt_val)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        rvm = (self.coordinator.data.get("stats", {}) or {}).get(self.machine.id, {}) or {}
+        raw = _get_last_report_raw(rvm)
+        dt_val = _parse_timestamp(raw)
+        return {
+            "raw": raw,
+            "utc": None if dt_val is None else dt_val.isoformat(),
+        }
 
 
 # ---------- Accepted ----------
@@ -364,7 +410,6 @@ class RevenuePetTodaySensor(Base):
 # ---------- Bins ----------
 
 class BinCountSensor(Base):
-    # Entity_id/unique_id blijft hetzelfde als eerdere versies: ..._binX_full (ivm historie).
     _attr_icon = "mdi:counter"
     _attr_native_unit_of_measurement = "stuks"
     _attr_translation_key = "bin_count"
@@ -385,7 +430,6 @@ class BinCountSensor(Base):
 
     @property
     def available(self) -> bool:
-        # Alleen “available” als deze bin echt gebruikt wordt (materiaal bekend).
         rvm = (self.coordinator.data.get("stats", {}) or {}).get(self.machine.id, {}) or {}
         self._update_material_cache(rvm)
         return self._material is not None and super().available
