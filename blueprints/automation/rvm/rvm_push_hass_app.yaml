@@ -2,122 +2,129 @@ blueprint:
   name: RVM Push (Home Assistant app)
   description: >
     Pushmeldingen naar de Home Assistant Companion App (notify.mobile_app_*).
+
     - Triggert op binary_sensors (off -> on)
     - Optioneel hold-for tegen flapping
     - Cooldown tegen spam
     - Tot 5 telefoons
     - Deeplink naar de betreffende entiteit
   domain: automation
+  source_url: https://github.com/Raymondgijzen/Envipco_Eportal/blob/main/blueprints/automation/rvm/rvm_push_hass_app.yaml
 
-  input:
-    master_enable:
-      name: Master: meldingen aan/uit
-      selector:
-        entity:
-          domain: input_boolean
+input:
+  master_enable:
+    name: Master: meldingen aan/uit
+    selector:
+      entity:
+        domain: input_boolean
 
-    triggers:
-      name: Trigger entiteiten (binary_sensors)
-      selector:
-        entity:
-          domain: binary_sensor
-          multiple: true
+  triggers:
+    name: Trigger entiteiten (binary_sensors)
+    selector:
+      entity:
+        domain: binary_sensor
+        multiple: true
 
-    hold_for:
-      name: Pas melden als het X tijd aan blijft
-      default: "00:00:00"
-      selector:
-        duration: {}
+  hold_for:
+    name: Pas melden als het X tijd aan blijft
+    default: "00:00:00"
+    selector:
+      duration: {}
 
-    cooldown_minutes:
-      name: Cooldown (minuten)
-      default: 15
-      selector:
-        number:
-          min: 0
-          max: 240
-          mode: slider
-          unit_of_measurement: min
+  cooldown_minutes:
+    name: Cooldown (minuten)
+    default: 15
+    selector:
+      number:
+        min: 0
+        max: 240
+        mode: slider
+        unit_of_measurement: min
 
-    title:
-      name: Titel
-      default: "RVM"
-      selector:
-        text: {}
+  title:
+    name: Titel
+    default: "RVM"
+    selector:
+      text: {}
 
-    prefix:
-      name: Prefix in bericht
-      description: Bijvoorbeeld "Bijna vol", "Vol", "Storing"
-      default: ""
-      selector:
-        text: {}
+  prefix:
+    name: Prefix in bericht
+    description: Bijvoorbeeld "Bijna vol", "Vol", "Storing"
+    default: ""
+    selector:
+      text: {}
 
-    high_priority:
-      name: Hoge prioriteit
-      description: Zet aan voor storing/vol.
-      default: false
-      selector:
-        boolean: {}
+  high_priority:
+    name: Hoge prioriteit
+    description: Zet aan voor storing/vol.
+    default: false
+    selector:
+      boolean: {}
 
-    # Telefoons (Companion App notify services)
-    phone1_service:
-      name: Telefoon 1 notify service
-      description: Bijvoorbeeld notify.mobile_app_raymond_phone
-      default: ""
-      selector:
-        text: {}
-    phone1_enable:
-      name: Telefoon 1 aan/uit
-      selector:
-        entity:
-          domain: input_boolean
+  # Telefoons (Companion App notify services)
+  phone1_service:
+    name: Telefoon 1 notify service
+    description: Bijvoorbeeld notify.mobile_app_raymond_phone
+    default: ""
+    selector:
+      text: {}
+  phone1_enable:
+    name: Telefoon 1 aan/uit
+    selector:
+      entity:
+        domain: input_boolean
 
-    phone2_service:
-      name: Telefoon 2 notify service
-      default: ""
-      selector:
-        text: {}
-    phone2_enable:
-      name: Telefoon 2 aan/uit
-      selector:
-        entity:
-          domain: input_boolean
+  phone2_service:
+    name: Telefoon 2 notify service
+    default: ""
+    selector:
+      text: {}
+  phone2_enable:
+    name: Telefoon 2 aan/uit
+    selector:
+      entity:
+        domain: input_boolean
 
-    phone3_service:
-      name: Telefoon 3 notify service
-      default: ""
-      selector:
-        text: {}
-    phone3_enable:
-      name: Telefoon 3 aan/uit
-      selector:
-        entity:
-          domain: input_boolean
+  phone3_service:
+    name: Telefoon 3 notify service
+    default: ""
+    selector:
+      text: {}
+  phone3_enable:
+    name: Telefoon 3 aan/uit
+    selector:
+      entity:
+        domain: input_boolean
 
-    phone4_service:
-      name: Telefoon 4 notify service
-      default: ""
-      selector:
-        text: {}
-    phone4_enable:
-      name: Telefoon 4 aan/uit
-      selector:
-        entity:
-          domain: input_boolean
+  phone4_service:
+    name: Telefoon 4 notify service
+    default: ""
+    selector:
+      text: {}
+  phone4_enable:
+    name: Telefoon 4 aan/uit
+    selector:
+      entity:
+        domain: input_boolean
 
-    phone5_service:
-      name: Telefoon 5 notify service
-      default: ""
-      selector:
-        text: {}
-    phone5_enable:
-      name: Telefoon 5 aan/uit
-      selector:
-        entity:
-          domain: input_boolean
+  phone5_service:
+    name: Telefoon 5 notify service
+    default: ""
+    selector:
+      text: {}
+  phone5_enable:
+    name: Telefoon 5 aan/uit
+    selector:
+      entity:
+        domain: input_boolean
 
 mode: queued
 max: 10
+
+# Variabelen zodat we inputs wél netjes in templates kunnen gebruiken
+variables:
+  cooldown_minutes: !input cooldown_minutes
+  high_priority: !input high_priority
 
 trigger:
   - platform: state
@@ -133,8 +140,8 @@ condition:
 
   # Cooldown per automation (globaal), voorkomt spam bij flapping of meerdere updates.
   - condition: template
-    value_template: >
-      {% set cd = ( !input cooldown_minutes ) | int(0) %}
+    value_template: >-
+      {% set cd = cooldown_minutes | int(0) %}
       {% if cd == 0 %}
         true
       {% else %}
@@ -170,9 +177,9 @@ action:
       # Deeplink naar entiteit in de app
       url: "entityId:{{ ent }}"
 
-      prio: "{{ 'high' if ( !input high_priority ) else 'normal' }}"
+      prio: "{{ 'high' if high_priority else 'normal' }}"
 
-  # stuur naar telefoon 1..5 als enable aan staat en service ingevuld
+  # Telefoon 1
   - choose:
       - conditions:
           - condition: state
@@ -190,9 +197,8 @@ action:
                 push:
                   sound: default
                   interruption-level: "{{ prio }}"
-                ttl: 0
-                priority: high
 
+  # Telefoon 2
   - choose:
       - conditions:
           - condition: state
@@ -210,9 +216,8 @@ action:
                 push:
                   sound: default
                   interruption-level: "{{ prio }}"
-                ttl: 0
-                priority: high
 
+  # Telefoon 3
   - choose:
       - conditions:
           - condition: state
@@ -230,9 +235,8 @@ action:
                 push:
                   sound: default
                   interruption-level: "{{ prio }}"
-                ttl: 0
-                priority: high
 
+  # Telefoon 4
   - choose:
       - conditions:
           - condition: state
@@ -250,9 +254,8 @@ action:
                 push:
                   sound: default
                   interruption-level: "{{ prio }}"
-                ttl: 0
-                priority: high
 
+  # Telefoon 5
   - choose:
       - conditions:
           - condition: state
@@ -270,5 +273,3 @@ action:
                 push:
                   sound: default
                   interruption-level: "{{ prio }}"
-                ttl: 0
-                priority: high
