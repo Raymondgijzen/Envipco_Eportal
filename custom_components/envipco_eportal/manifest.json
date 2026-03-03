@@ -1,7 +1,7 @@
 {
   "domain": "envipco_eportal",
   "name": "Envipco ePortal",
-  "version": "1.6.4",
+  "version": "1.0.2",
   "documentation": "https://eportal.envipco.com/",
   "requirements": [],
   "codeowners": [],
