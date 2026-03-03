@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from .const import (
     BIN_COUNT_PREFIX,
@@ -17,7 +18,8 @@ from .const import (
     CONF_MACHINES,
     DOMAIN,
     REJECT_KEYS,
-    STATUS_LAST_REPORT_KEY,
+    STATUS_LAST_REPORT_FALLBACK_KEYS,
+    STATUS_LAST_REPORT_PRIMARY_KEY,
     STATUS_STATE_KEY,
 )
 from .coordinator import EnvipcoCoordinator
@@ -50,6 +52,31 @@ def _norm_material(raw: str | None) -> str | None:
     return MATERIAL_MAP.get(key, key)
 
 
+def _parse_timestamp(value: Any) -> datetime | None:
+    """Zet API timestamp om naar een HA-veilige datetime (UTC)."""
+    if value is None:
+        return None
+
+    if isinstance(value, datetime):
+        # Maak timezone-aware
+        if value.tzinfo is None:
+            return value.replace(tzinfo=dt_util.UTC)
+        return dt_util.as_utc(value)
+
+    if isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return None
+        dt = dt_util.parse_datetime(s)
+        if dt is None:
+            return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=dt_util.UTC)
+        return dt_util.as_utc(dt)
+
+    return None
+
+
 # ---------- Setup ----------
 
 async def async_setup_entry(
@@ -60,21 +87,22 @@ async def async_setup_entry(
     coordinator: EnvipcoCoordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
 
     machines_cfg = entry.options.get(CONF_MACHINES, entry.data.get(CONF_MACHINES, [])) or []
-    machines = [MachineDef(name=m.get("name") or m.get("id"), id=m.get("id")) for m in machines_cfg if m.get("id")]
+    machines = [
+        MachineDef(name=m.get("name") or m.get("id"), id=m.get("id"))
+        for m in machines_cfg
+        if m.get("id")
+    ]
 
     entities: list[SensorEntity] = []
 
     for m in machines:
         entities.append(StatusSensor(coordinator, entry, m))
         entities.append(LastReportSensor(coordinator, entry, m))
-
         entities.append(AcceptedTotalSensor(coordinator, entry, m))
         entities.append(AcceptedCansSensor(coordinator, entry, m))
         entities.append(AcceptedPetSensor(coordinator, entry, m))
-
         entities.append(RejectTotalSensor(coordinator, entry, m))
         entities.append(RejectRateSensor(coordinator, entry, m))
-
         entities.append(RevenueTodaySensor(coordinator, entry, m))
         entities.append(RevenueCanTodaySensor(coordinator, entry, m))
         entities.append(RevenuePetTodaySensor(coordinator, entry, m))
@@ -139,7 +167,18 @@ class LastReportSensor(Base):
     @property
     def native_value(self) -> Any:
         rvm = (self.coordinator.data.get("stats", {}) or {}).get(self.machine.id, {}) or {}
-        return rvm.get(STATUS_LAST_REPORT_KEY)
+
+        # 1) Eerst jouw gewenste key
+        raw = rvm.get(STATUS_LAST_REPORT_PRIMARY_KEY)
+
+        # 2) Fallback(s)
+        if raw is None:
+            for k in STATUS_LAST_REPORT_FALLBACK_KEYS:
+                raw = rvm.get(k)
+                if raw is not None:
+                    break
+
+        return _parse_timestamp(raw)
 
 
 # ---------- Accepted ----------
@@ -335,53 +374,39 @@ class BinCountSensor(Base):
         self.bin_no = bin_no
         self._material: str | None = None
         self._attr_unique_id = f"{entry.entry_id}_{machine.id}_bin{bin_no}_full"
-        # Dynamisch: HA vertalingen ondersteunen geen placeholders, dus dit deel blijft in code.
-        self._attr_name = f"Bak {bin_no} aantal"
+        self._attr_name = f"Bin {bin_no} count"
 
-        # Ongebruikte bins hebben geen materiaal -> standaard verbergen
-        rvm = (coordinator.data.get("stats", {}) or {}).get(machine.id, {}) or {}
-        mat_raw = (rvm.get(f"{BIN_MATERIAL_PREFIX}{bin_no}") or "").strip()
-        if not mat_raw:
-            self._attr_entity_registry_enabled_default = False
-            self._attr_entity_category = EntityCategory.DIAGNOSTIC
+    def _bin_key(self, prefix: str) -> str:
+        return f"{prefix}{self.bin_no}"
 
-    def _get_material(self) -> str | None:
+    def _update_material_cache(self, rvm: dict[str, Any]) -> None:
+        raw = rvm.get(self._bin_key(BIN_MATERIAL_PREFIX))
+        self._material = _norm_material(raw)
+
+    @property
+    def available(self) -> bool:
+        # Alleen “available” als deze bin echt gebruikt wordt (materiaal bekend).
         rvm = (self.coordinator.data.get("stats", {}) or {}).get(self.machine.id, {}) or {}
-        return _norm_material(rvm.get(f"{BIN_MATERIAL_PREFIX}{self.bin_no}"))
+        self._update_material_cache(rvm)
+        return self._material is not None and super().available
 
     @property
     def native_value(self) -> Any:
         rvm = (self.coordinator.data.get("stats", {}) or {}).get(self.machine.id, {}) or {}
-        mat_raw = (rvm.get(f"{BIN_MATERIAL_PREFIX}{self.bin_no}") or "").strip()
-        if not mat_raw:
+        self._update_material_cache(rvm)
+        if self._material is None:
             return None
-
-        raw_count = rvm.get(f"{BIN_COUNT_PREFIX}{self.bin_no}")
-        raw_full = rvm.get(f"{BIN_FULL_PREFIX}{self.bin_no}")
-        raw_val = raw_count if raw_count not in (None, "") else raw_full
-
-        try:
-            val_i = int(float(raw_val))
-        except Exception:
-            val_i = None
-
-        if val_i is None or val_i < 0:
-            return None
-        return val_i
+        return rvm.get(self._bin_key(BIN_COUNT_PREFIX))
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         rvm = (self.coordinator.data.get("stats", {}) or {}).get(self.machine.id, {}) or {}
-        return {
-            "materiaal": self._get_material(),
-            "reset": "waarde kan lager worden na legen",
-            "raw_count": rvm.get(f"{BIN_COUNT_PREFIX}{self.bin_no}"),
-            "raw_full": rvm.get(f"{BIN_FULL_PREFIX}{self.bin_no}"),
-        }
+        self._update_material_cache(rvm)
+        if self._material is None:
+            return {"datum": self.coordinator.data.get("date")}
 
-    def _handle_coordinator_update(self) -> None:
-        mat = self._get_material()
-        if mat and mat != self._material:
-            self._material = mat
-            self._attr_name = f"Bak {self.bin_no} {mat} aantal"
-        super()._handle_coordinator_update()
+        return {
+            "materiaal": self._material,
+            "bin_full_flag": rvm.get(self._bin_key(BIN_FULL_PREFIX)),
+            "datum": self.coordinator.data.get("date"),
+        }
