@@ -41,15 +41,6 @@ MATERIAL_MAP: dict[str, str] = {
     "GLS": "GLASS",
 }
 
-# Standaard aannames voor bin-capaciteit.
-# Dit zijn dus géén waarden uit de API, maar rekengrenzen om een bruikbaar percentage te maken.
-# Later kunnen we dit nog netter in config_flow/options zetten.
-BIN_CAPACITY_BY_MATERIAL: dict[str, int] = {
-    "CAN": 1200,
-    "PET": 600,
-    "GLASS": 400,
-}
-
 
 def _norm_material(raw: str | None) -> str | None:
     if not raw:
@@ -125,12 +116,6 @@ def _bin_has_data(rvm: dict[str, Any], bin_no: int) -> bool:
     return False
 
 
-def _capacity_for_material(material: str | None) -> int | None:
-    if not material:
-        return None
-    return BIN_CAPACITY_BY_MATERIAL.get(material)
-
-
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -156,6 +141,7 @@ async def async_setup_entry(
         entities.append(AcceptedTotalSensor(coordinator, entry, machine))
         entities.append(AcceptedCansSensor(coordinator, entry, machine))
         entities.append(AcceptedPetSensor(coordinator, entry, machine))
+        entities.append(AcceptedGlassSensor(coordinator, entry, machine))
         entities.append(RejectTotalSensor(coordinator, entry, machine))
         entities.append(RejectRateSensor(coordinator, entry, machine))
         entities.append(RevenueTodaySensor(coordinator, entry, machine))
@@ -202,6 +188,12 @@ class Base(CoordinatorEntity[EnvipcoCoordinator], SensorEntity):
 
     def _get_rvm(self) -> dict[str, Any]:
         return (self.coordinator.data.get("stats", {}) or {}).get(self.machine.id, {}) or {}
+
+    def _get_totals(self) -> dict[str, Any]:
+        return (self.coordinator.data.get("totals", {}) or {}).get(self.machine.id, {}) or {}
+
+    def _get_rejects(self) -> dict[str, Any]:
+        return (self.coordinator.data.get("rejects", {}) or {}).get(self.machine.id, {}) or {}
 
 
 class StatusSensor(Base):
@@ -265,7 +257,7 @@ class AcceptedTotalSensor(Base):
 
     @property
     def native_value(self) -> Any:
-        return self._get_rvm().get("acceptedTotal")
+        return self._get_totals().get("accepted_total")
 
 
 class AcceptedCansSensor(Base):
@@ -280,7 +272,7 @@ class AcceptedCansSensor(Base):
 
     @property
     def native_value(self) -> Any:
-        return self._get_rvm().get("acceptedCans")
+        return self._get_totals().get("accepted_cans")
 
 
 class AcceptedPetSensor(Base):
@@ -295,7 +287,22 @@ class AcceptedPetSensor(Base):
 
     @property
     def native_value(self) -> Any:
-        return self._get_rvm().get("acceptedPET")
+        return self._get_totals().get("accepted_pet")
+
+
+class AcceptedGlassSensor(Base):
+    _attr_icon = "mdi:glass-fragile"
+    _attr_translation_key = "accepted_glass"
+
+    def __init__(self, coordinator, entry, machine):
+        super().__init__(coordinator, entry, machine)
+        self._attr_unique_id = f"{entry.entry_id}_{machine.id}_accepted_glass"
+        self._attr_name = self._build_name("Accepted glas")
+        self._set_object_id("accepted_glas")
+
+    @property
+    def native_value(self) -> Any:
+        return self._get_totals().get("accepted_glass")
 
 
 class RejectTotalSensor(Base):
@@ -310,12 +317,14 @@ class RejectTotalSensor(Base):
 
     @property
     def native_value(self) -> Any:
-        return self._get_rvm().get("rejectTotal")
+        return self._get_totals().get("rejects_total")
 
 
 class RejectRateSensor(Base):
     _attr_icon = "mdi:percent"
     _attr_translation_key = "reject_rate"
+    _attr_native_unit_of_measurement = "%"
+    _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(self, coordinator, entry, machine):
         super().__init__(coordinator, entry, machine)
@@ -325,12 +334,17 @@ class RejectRateSensor(Base):
 
     @property
     def native_value(self) -> Any:
-        return self._get_rvm().get("rejectRate")
+        value = self._get_totals().get("reject_rate")
+        if value is None:
+            return None
+        return round(float(value), 1)
 
 
 class RevenueTodaySensor(Base):
     _attr_icon = "mdi:currency-eur"
     _attr_translation_key = "revenue_today"
+    _attr_native_unit_of_measurement = "EUR"
+    _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(self, coordinator, entry, machine):
         super().__init__(coordinator, entry, machine)
@@ -340,12 +354,17 @@ class RevenueTodaySensor(Base):
 
     @property
     def native_value(self) -> Any:
-        return self._get_rvm().get("revenueToday")
+        value = self._get_totals().get("revenue_today")
+        if value is None:
+            return None
+        return round(float(value), 2)
 
 
 class RevenueCanTodaySensor(Base):
     _attr_icon = "mdi:currency-eur"
     _attr_translation_key = "revenue_can_today"
+    _attr_native_unit_of_measurement = "EUR"
+    _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(self, coordinator, entry, machine):
         super().__init__(coordinator, entry, machine)
@@ -355,12 +374,17 @@ class RevenueCanTodaySensor(Base):
 
     @property
     def native_value(self) -> Any:
-        return self._get_rvm().get("revenueCanToday")
+        value = self._get_totals().get("revenue_can_today")
+        if value is None:
+            return None
+        return round(float(value), 2)
 
 
 class RevenuePetTodaySensor(Base):
     _attr_icon = "mdi:currency-eur"
     _attr_translation_key = "revenue_pet_today"
+    _attr_native_unit_of_measurement = "EUR"
+    _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(self, coordinator, entry, machine):
         super().__init__(coordinator, entry, machine)
@@ -370,7 +394,10 @@ class RevenuePetTodaySensor(Base):
 
     @property
     def native_value(self) -> Any:
-        return self._get_rvm().get("revenuePetToday")
+        value = self._get_totals().get("revenue_pet_today")
+        if value is None:
+            return None
+        return round(float(value), 2)
 
 
 class RejectTypeSensor(Base):
@@ -385,8 +412,7 @@ class RejectTypeSensor(Base):
 
     @property
     def native_value(self) -> Any:
-        rejects = self._get_rvm().get("rejects", {}) or {}
-        return rejects.get(self.reject_key)
+        return self._get_rejects().get(self.reject_key)
 
 
 class BinBaseSensor(Base):
@@ -430,6 +456,20 @@ class BinBaseSensor(Base):
             return f"Bin {self.bin_no} {material}"
         return f"Bin {self.bin_no}"
 
+    def _capacity(self) -> int | None:
+        material = self._material()
+        if not material:
+            return None
+
+        capacities = self.coordinator.bin_capacities(self.machine.id)
+        if material == "CAN":
+            return capacities.get("can")
+        if material == "PET":
+            return capacities.get("pet")
+        if material == "GLASS":
+            return capacities.get("glass")
+        return None
+
     @property
     def available(self) -> bool:
         return _bin_has_data(self._get_rvm(), self.bin_no)
@@ -451,12 +491,10 @@ class BinCountSensor(BinBaseSensor):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        material = self._material()
-        capacity = _capacity_for_material(material)
         return {
-            "materiaal": material,
+            "materiaal": self._material(),
             "bin_full": self._full(),
-            "capaciteit_aanname": capacity,
+            "capaciteit_ingesteld": self._capacity(),
         }
 
 
@@ -475,11 +513,24 @@ class BinPercentageSensor(BinBaseSensor):
     def native_value(self) -> float | None:
         material = self._material()
         count = self._count()
-        capacity = _capacity_for_material(material)
+        capacity = self._capacity()
 
         self._attr_name = self._build_name(f"{self._bin_label()} percentage")
 
+        # Eerst API fullness gebruiken als deze netjes 0..100 is.
+        full_value = self._full()
+        try:
+            if full_value not in (None, ""):
+                api_percentage = float(full_value)
+                if 0.0 <= api_percentage <= 100.0:
+                    return round(api_percentage, 1)
+        except (TypeError, ValueError):
+            pass
+
         if count is None or capacity in (None, 0):
+            return None
+
+        if material not in {"CAN", "PET", "GLASS"}:
             return None
 
         percentage = (float(count) / float(capacity)) * 100.0
@@ -487,11 +538,10 @@ class BinPercentageSensor(BinBaseSensor):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        material = self._material()
-        capacity = _capacity_for_material(material)
         return {
-            "materiaal": material,
+            "materiaal": self._material(),
             "aantal": self._count(),
-            "capaciteit_aanname": capacity,
-            "uitleg": "Percentage is berekend op basis van count / aangenomen capaciteit.",
+            "capaciteit_ingesteld": self._capacity(),
+            "api_fullness": self._full(),
+            "uitleg": "Percentage gebruikt eerst BinInfoFullBinX uit de API. Als die niet bruikbaar is, dan count / ingestelde capaciteit.",
         }
