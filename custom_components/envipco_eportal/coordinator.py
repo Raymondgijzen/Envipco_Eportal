@@ -10,13 +10,17 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .api import EnvipcoApiError, EnvipcoEPortalApiClient
 from .const import (
     ACCEPT_FIELDS_PREFIX,
+    CONF_MACHINE_BIN_CAPACITY,
     CONF_MACHINES,
     CONF_MACHINE_RATES,
+    DEFAULT_BIN_CAPACITY_CAN,
+    DEFAULT_BIN_CAPACITY_GLASS,
+    DEFAULT_BIN_CAPACITY_PET,
     DEFAULT_RATE_CAN,
     DEFAULT_RATE_PET,
     KEY_ACCEPTED_CANS,
-    KEY_ACCEPTED_PET,
     KEY_ACCEPTED_GLASS,
+    KEY_ACCEPTED_PET,
     REJECT_KEYS,
 )
 
@@ -56,6 +60,15 @@ class EnvipcoCoordinator(DataUpdateCoordinator[dict]):
         can = float(r.get("can", DEFAULT_RATE_CAN))
         pet = float(r.get("pet", DEFAULT_RATE_PET))
         return can, pet
+
+    def bin_capacities(self, rvm_id: str) -> dict[str, int]:
+        all_caps = self.entry.options.get(CONF_MACHINE_BIN_CAPACITY, {}) or {}
+        caps = all_caps.get(rvm_id, {}) or {}
+        return {
+            "can": int(caps.get("can", DEFAULT_BIN_CAPACITY_CAN)),
+            "pet": int(caps.get("pet", DEFAULT_BIN_CAPACITY_PET)),
+            "glass": int(caps.get("glass", DEFAULT_BIN_CAPACITY_GLASS)),
+        }
 
     @staticmethod
     def _safe_int(v) -> int:
