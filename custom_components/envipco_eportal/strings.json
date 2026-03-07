@@ -49,6 +49,24 @@
         "title": "Vergoedingen per automaat",
         "description": "Stel per automaat de vergoeding in voor CAN en PET (EUR). Je kunt tot 4 decimalen gebruiken (bijv. 0.0107).",
         "data": {}
+      },
+      "bin_limits": {
+        "title": "Bin limieten per automaat",
+        "description": "Stel de limieten in voor {machine_name} ({machine_id}). Deze waarden worden gebruikt voor de bin-percentage sensoren en overschrijven de API-limiet als je hier iets invult.",
+        "data": {
+          "bin_1": "Bin 1 limiet",
+          "bin_2": "Bin 2 limiet",
+          "bin_3": "Bin 3 limiet",
+          "bin_4": "Bin 4 limiet",
+          "bin_5": "Bin 5 limiet",
+          "bin_6": "Bin 6 limiet",
+          "bin_7": "Bin 7 limiet",
+          "bin_8": "Bin 8 limiet",
+          "bin_9": "Bin 9 limiet",
+          "bin_10": "Bin 10 limiet",
+          "bin_11": "Bin 11 limiet",
+          "bin_12": "Bin 12 limiet"
+        }
       }
     },
     "error": {

@@ -12,14 +12,23 @@ CONF_MACHINES = "machines"  # list[{"id": "...", "name": "..."}]
 # per machine rates stored in entry.options
 CONF_MACHINE_RATES = "machine_rates"  # dict[rvm_id] = {"can": float, "pet": float}
 
+# per machine configured bin limits stored in entry.options
+# dict[rvm_id] = {"1": int, "2": int, ...}
+CONF_MACHINE_BIN_LIMITS = "machine_bin_limits"
+
 DEFAULT_RATE_CAN = 0.0107
 DEFAULT_RATE_PET = 0.0331
 
 DEFAULT_SCAN_INTERVAL = 300  # seconds
+DEFAULT_BIN_LIMIT_CAN = 1200
+DEFAULT_BIN_LIMIT_PET = 600
+DEFAULT_BIN_LIMIT_GLASS = 400
+DEFAULT_BIN_LIMIT_UNKNOWN = 1000
+MAX_BINS = 12
 
 EP_BASE = "https://ePortal.envipco.com/api"
 
-PLATFORMS = ["sensor"]
+PLATFORMS = ["sensor", "number"]
 
 # rvmStats keys (examples from docs / praktijk)
 STATUS_STATE_KEY = "StatusInfoState"

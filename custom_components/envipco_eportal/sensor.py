@@ -18,8 +18,14 @@ from .const import (
     BIN_LIMIT_PREFIX,
     BIN_FULL_PREFIX,
     BIN_MATERIAL_PREFIX,
+    CONF_MACHINE_BIN_LIMITS,
     CONF_MACHINES,
+    DEFAULT_BIN_LIMIT_CAN,
+    DEFAULT_BIN_LIMIT_GLASS,
+    DEFAULT_BIN_LIMIT_PET,
+    DEFAULT_BIN_LIMIT_UNKNOWN,
     DOMAIN,
+    MAX_BINS,
     REJECT_KEYS,
     STATUS_LAST_REPORT_FALLBACK_KEYS,
     STATUS_LAST_REPORT_PRIMARY_KEY,
@@ -43,13 +49,10 @@ MATERIAL_MAP: dict[str, str] = {
     "GLS": "GLASS",
 }
 
-# Standaard aannames voor bin-capaciteit.
-# Dit zijn dus géén waarden uit de API, maar rekengrenzen om een bruikbaar percentage te maken.
-# Later kunnen we dit nog netter in config_flow/options zetten.
 BIN_CAPACITY_BY_MATERIAL: dict[str, int] = {
-    "CAN": 1200,
-    "PET": 600,
-    "GLASS": 400,
+    "CAN": DEFAULT_BIN_LIMIT_CAN,
+    "PET": DEFAULT_BIN_LIMIT_PET,
+    "GLASS": DEFAULT_BIN_LIMIT_GLASS,
 }
 
 
@@ -111,8 +114,12 @@ def _bin_has_data(rvm: dict[str, Any], bin_no: int) -> bool:
 
     count = rvm.get(f"{BIN_COUNT_PREFIX}{bin_no}")
     full = rvm.get(f"{BIN_FULL_PREFIX}{bin_no}")
+    limit = rvm.get(f"{BIN_LIMIT_PREFIX}{bin_no}")
 
     if count not in (None, "", 0, "0"):
+        return True
+
+    if limit not in (None, "", 0, "0"):
         return True
 
     if isinstance(full, bool):
@@ -134,15 +141,15 @@ def _capacity_for_material(material: str | None) -> int | None:
 
 
 def _machine_display_name(machine: MachineDef, rvm: dict[str, Any]) -> str:
-    configured = (machine.name or '').strip()
+    configured = (machine.name or "").strip()
     if configured and configured != machine.id:
         return configured
 
-    account = str(rvm.get('SiteInfoAccount') or '').strip()
+    account = str(rvm.get("SiteInfoAccount") or "").strip()
     if account:
         return account
 
-    location = str(rvm.get('SiteInfoLocationID') or '').strip()
+    location = str(rvm.get("SiteInfoLocationID") or "").strip()
     if location:
         return location
 
@@ -150,19 +157,19 @@ def _machine_display_name(machine: MachineDef, rvm: dict[str, Any]) -> str:
 
 
 def _location_label(rvm: dict[str, Any]) -> str | None:
-    address = str(rvm.get('SiteInfoAddress') or '').strip()
-    city = str(rvm.get('SiteInfoCity') or '').strip()
-    postal = str(rvm.get('SiteInfoPostalCode') or '').strip()
+    address = str(rvm.get("SiteInfoAddress") or "").strip()
+    city = str(rvm.get("SiteInfoCity") or "").strip()
+    postal = str(rvm.get("SiteInfoPostalCode") or "").strip()
 
     parts: list[str] = []
     if address:
         parts.append(address)
 
-    city_line = ' '.join(p for p in [postal, city] if p).strip()
+    city_line = " ".join(p for p in [postal, city] if p).strip()
     if city_line:
         parts.append(city_line)
 
-    return ', '.join(parts) if parts else None
+    return ", ".join(parts) if parts else None
 
 
 async def async_setup_entry(
@@ -181,8 +188,6 @@ async def async_setup_entry(
 
     entities: list[SensorEntity] = []
 
-    stats = coordinator.data.get("stats", {}) or {}
-
     for machine in machines:
         entities.append(StatusSensor(coordinator, entry, machine))
         entities.append(LastReportSensor(coordinator, entry, machine))
@@ -200,11 +205,7 @@ async def async_setup_entry(
         for key in REJECT_KEYS:
             entities.append(RejectTypeSensor(coordinator, entry, machine, key))
 
-        rvm = stats.get(machine.id, {}) or {}
-        for bin_no in range(1, 13):
-            if not _bin_has_data(rvm, bin_no):
-                continue
-
+        for bin_no in range(1, MAX_BINS + 1):
             entities.append(BinCountSensor(coordinator, entry, machine, bin_no))
             entities.append(BinLimitSensor(coordinator, entry, machine, bin_no))
             entities.append(BinPercentageSensor(coordinator, entry, machine, bin_no))
@@ -471,6 +472,7 @@ class BinBaseSensor(Base):
     def __init__(self, coordinator, entry, machine: MachineDef, bin_no: int) -> None:
         super().__init__(coordinator, entry, machine)
         self.bin_no = bin_no
+        self._attr_entity_registry_enabled_default = _bin_has_data(self._get_rvm(), self.bin_no)
 
     @property
     def _bin_key_count(self) -> str:
@@ -506,7 +508,7 @@ class BinBaseSensor(Base):
     def _full(self) -> Any:
         return self._get_rvm().get(self._bin_key_full)
 
-    def _limit(self) -> int | float | None:
+    def _api_limit(self) -> int | float | None:
         value = self._get_rvm().get(self._bin_key_limit)
         if value in (None, ""):
             return None
@@ -517,6 +519,35 @@ class BinBaseSensor(Base):
                 return float(value)
             except (TypeError, ValueError):
                 return None
+
+    def _configured_limit(self) -> int | None:
+        all_limits = self.entry.options.get(
+            CONF_MACHINE_BIN_LIMITS,
+            self.entry.data.get(CONF_MACHINE_BIN_LIMITS, {}),
+        ) or {}
+        machine_limits = all_limits.get(self.machine.id, {}) or {}
+        value = machine_limits.get(str(self.bin_no))
+        if value in (None, ""):
+            return None
+        try:
+            return int(float(value))
+        except (TypeError, ValueError):
+            return None
+
+    def _effective_limit(self) -> int | float | None:
+        configured = self._configured_limit()
+        if configured not in (None, 0):
+            return configured
+
+        api_limit = self._api_limit()
+        if api_limit not in (None, 0):
+            return api_limit
+
+        material = self._material()
+        if material:
+            return _capacity_for_material(material)
+
+        return DEFAULT_BIN_LIMIT_UNKNOWN
 
     def _bin_label(self) -> str:
         material = self._material()
@@ -546,12 +577,12 @@ class BinCountSensor(BinBaseSensor):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         material = self._material()
-        capacity = _capacity_for_material(material)
         return {
             "materiaal": material,
             "bin_full": self._full(),
-            "bin_limit": self._limit(),
-            "capaciteit_aanname": capacity,
+            "bin_limit_api": self._api_limit(),
+            "bin_limit_config": self._configured_limit(),
+            "bin_limit_actief": self._effective_limit(),
         }
 
 
@@ -567,7 +598,7 @@ class BinLimitSensor(BinBaseSensor):
     @property
     def native_value(self) -> Any:
         self._attr_name = self._build_name(f"{self._bin_label()} limiet")
-        return self._limit()
+        return self._effective_limit()
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -575,7 +606,9 @@ class BinLimitSensor(BinBaseSensor):
             "materiaal": self._material(),
             "bin_full": self._full(),
             "aantal": self._count(),
-            "uitleg": "Waarde komt direct uit BinInfoLimitBinX van de Envipco API.",
+            "bin_limit_api": self._api_limit(),
+            "bin_limit_config": self._configured_limit(),
+            "uitleg": "Actieve waarde gebruikt eerst de ingestelde limiet uit opties, daarna de API-waarde.",
         }
 
 
@@ -592,9 +625,8 @@ class BinPercentageSensor(BinBaseSensor):
 
     @property
     def native_value(self) -> float | None:
-        material = self._material()
         count = self._count()
-        capacity = _capacity_for_material(material)
+        capacity = self._effective_limit()
 
         self._attr_name = self._build_name(f"{self._bin_label()} percentage")
 
@@ -606,12 +638,11 @@ class BinPercentageSensor(BinBaseSensor):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        material = self._material()
-        capacity = _capacity_for_material(material)
         return {
-            "materiaal": material,
+            "materiaal": self._material(),
             "aantal": self._count(),
-            "bin_limit": self._limit(),
-            "capaciteit_aanname": capacity,
-            "uitleg": "Percentage is berekend op basis van count / aangenomen capaciteit.",
+            "bin_limit_api": self._api_limit(),
+            "bin_limit_config": self._configured_limit(),
+            "bin_limit_actief": self._effective_limit(),
+            "uitleg": "Percentage is berekend op basis van count / actieve limiet.",
         }
