@@ -60,27 +60,30 @@ def _norm_material(raw: str | None) -> str | None:
 
 
 def _bin_has_data(rvm: dict[str, Any], bin_no: int) -> bool:
+    """Bepaal of een bin echt in gebruik is.
+
+    We behandelen een bin alleen als actief wanneer er duidelijke aanwijzingen zijn
+    dat die bin gebruikt wordt. Een kale limit-waarde of een bool False bij
+    BinInfoFullBinX telt dus niet mee, omdat de API zulke waarden ook kan
+    teruggeven voor bins die fysiek niet in gebruik zijn.
+    """
     material = _norm_material(rvm.get(f"{BIN_MATERIAL_PREFIX}{bin_no}"))
     if material:
         return True
 
     count = rvm.get(f"{BIN_COUNT_PREFIX}{bin_no}")
     full = rvm.get(f"{BIN_FULL_PREFIX}{bin_no}")
-    limit = rvm.get(f"{BIN_LIMIT_PREFIX}{bin_no}")
 
-    if count not in (None, "", 0, "0"):
+    if count not in (None, "", 0, "0", 0.0, "0.0"):
         return True
 
-    if limit not in (None, "", 0, "0"):
+    if full is True:
         return True
 
-    if isinstance(full, bool):
+    if isinstance(full, str) and full.strip().lower() not in ("", "0", "false", "no"):
         return True
 
-    if isinstance(full, str) and full.strip():
-        return True
-
-    if isinstance(full, (int, float)):
+    if isinstance(full, (int, float)) and full not in (0, 0.0):
         return True
 
     return False
