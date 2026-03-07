@@ -1,7 +1,0 @@
-{
-  "name": "Envipco ePortal",
-  "content_in_root": false,
-  "domains": ["envipco_eportal"],
-  "homeassistant": "2023.8.0",
-  "render_readme": true
-}
