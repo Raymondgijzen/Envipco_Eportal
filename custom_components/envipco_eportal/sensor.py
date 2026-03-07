@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -39,6 +39,15 @@ MATERIAL_MAP: dict[str, str] = {
     "PET": "PET",
     "GLASS": "GLASS",
     "GLS": "GLASS",
+}
+
+# Standaard aannames voor bin-capaciteit.
+# Dit zijn dus géén waarden uit de API, maar rekengrenzen om een bruikbaar percentage te maken.
+# Later kunnen we dit nog netter in config_flow/options zetten.
+BIN_CAPACITY_BY_MATERIAL: dict[str, int] = {
+    "CAN": 1200,
+    "PET": 600,
+    "GLASS": 400,
 }
 
 
@@ -93,6 +102,35 @@ def _get_last_report_raw(rvm: dict[str, Any]) -> Any:
     return raw
 
 
+def _bin_has_data(rvm: dict[str, Any], bin_no: int) -> bool:
+    material = _norm_material(rvm.get(f"{BIN_MATERIAL_PREFIX}{bin_no}"))
+    if material:
+        return True
+
+    count = rvm.get(f"{BIN_COUNT_PREFIX}{bin_no}")
+    full = rvm.get(f"{BIN_FULL_PREFIX}{bin_no}")
+
+    if count not in (None, "", 0, "0"):
+        return True
+
+    if isinstance(full, bool):
+        return True
+
+    if isinstance(full, str) and full.strip():
+        return True
+
+    if isinstance(full, (int, float)):
+        return True
+
+    return False
+
+
+def _capacity_for_material(material: str | None) -> int | None:
+    if not material:
+        return None
+    return BIN_CAPACITY_BY_MATERIAL.get(material)
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -108,6 +146,8 @@ async def async_setup_entry(
     ]
 
     entities: list[SensorEntity] = []
+
+    stats = coordinator.data.get("stats", {}) or {}
 
     for machine in machines:
         entities.append(StatusSensor(coordinator, entry, machine))
@@ -125,8 +165,13 @@ async def async_setup_entry(
         for key in REJECT_KEYS:
             entities.append(RejectTypeSensor(coordinator, entry, machine, key))
 
+        rvm = stats.get(machine.id, {}) or {}
         for bin_no in range(1, 13):
+            if not _bin_has_data(rvm, bin_no):
+                continue
+
             entities.append(BinCountSensor(coordinator, entry, machine, bin_no))
+            entities.append(BinPercentageSensor(coordinator, entry, machine, bin_no))
 
     async_add_entities(entities)
 
@@ -344,15 +389,10 @@ class RejectTypeSensor(Base):
         return rejects.get(self.reject_key)
 
 
-class BinCountSensor(Base):
-    _attr_icon = "mdi:counter"
-
+class BinBaseSensor(Base):
     def __init__(self, coordinator, entry, machine: MachineDef, bin_no: int) -> None:
         super().__init__(coordinator, entry, machine)
         self.bin_no = bin_no
-        self._attr_unique_id = f"{entry.entry_id}_{machine.id}_bin_{bin_no}_count"
-        self._attr_name = self._build_name(f"Bin {bin_no}")
-        self._set_object_id(f"bin_{bin_no}_count")
 
     @property
     def _bin_key_count(self) -> str:
@@ -366,27 +406,92 @@ class BinCountSensor(Base):
     def _bin_key_full(self) -> str:
         return f"{BIN_FULL_PREFIX}{self.bin_no}"
 
+    def _material(self) -> str | None:
+        return _norm_material(self._get_rvm().get(self._bin_key_material))
+
+    def _count(self) -> int | float | None:
+        value = self._get_rvm().get(self._bin_key_count)
+        if value in (None, ""):
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return None
+
+    def _full(self) -> Any:
+        return self._get_rvm().get(self._bin_key_full)
+
+    def _bin_label(self) -> str:
+        material = self._material()
+        if material:
+            return f"Bin {self.bin_no} {material}"
+        return f"Bin {self.bin_no}"
+
+    @property
+    def available(self) -> bool:
+        return _bin_has_data(self._get_rvm(), self.bin_no)
+
+
+class BinCountSensor(BinBaseSensor):
+    _attr_icon = "mdi:counter"
+
+    def __init__(self, coordinator, entry, machine: MachineDef, bin_no: int) -> None:
+        super().__init__(coordinator, entry, machine, bin_no)
+        self._attr_unique_id = f"{entry.entry_id}_{machine.id}_bin_{bin_no}_count"
+        self._attr_name = self._build_name(f"Bin {bin_no}")
+        self._set_object_id(f"bin_{bin_no}_count")
+
     @property
     def native_value(self) -> Any:
-        rvm = self._get_rvm()
-        count = rvm.get(self._bin_key_count)
-        material_raw = rvm.get(self._bin_key_material)
-        material = _norm_material(material_raw)
-
-        if material:
-            self._attr_name = self._build_name(f"Bin {self.bin_no} {material}")
-        else:
-            self._attr_name = self._build_name(f"Bin {self.bin_no}")
-
-        return count
+        self._attr_name = self._build_name(self._bin_label())
+        return self._count()
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        rvm = self._get_rvm()
-        material_raw = rvm.get(self._bin_key_material)
-        material = _norm_material(material_raw)
-        full = rvm.get(self._bin_key_full)
+        material = self._material()
+        capacity = _capacity_for_material(material)
         return {
             "materiaal": material,
-            "bin_full": full,
+            "bin_full": self._full(),
+            "capaciteit_aanname": capacity,
+        }
+
+
+class BinPercentageSensor(BinBaseSensor):
+    _attr_icon = "mdi:percent"
+    _attr_native_unit_of_measurement = "%"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator, entry, machine: MachineDef, bin_no: int) -> None:
+        super().__init__(coordinator, entry, machine, bin_no)
+        self._attr_unique_id = f"{entry.entry_id}_{machine.id}_bin_{bin_no}_percentage"
+        self._attr_name = self._build_name(f"Bin {bin_no} percentage")
+        self._set_object_id(f"bin_{bin_no}_percentage")
+
+    @property
+    def native_value(self) -> float | None:
+        material = self._material()
+        count = self._count()
+        capacity = _capacity_for_material(material)
+
+        self._attr_name = self._build_name(f"{self._bin_label()} percentage")
+
+        if count is None or capacity in (None, 0):
+            return None
+
+        percentage = (float(count) / float(capacity)) * 100.0
+        return round(min(100.0, max(0.0, percentage)), 1)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        material = self._material()
+        capacity = _capacity_for_material(material)
+        return {
+            "materiaal": material,
+            "aantal": self._count(),
+            "capaciteit_aanname": capacity,
+            "uitleg": "Percentage is berekend op basis van count / aangenomen capaciteit.",
         }
