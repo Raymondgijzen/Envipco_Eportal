@@ -49,11 +49,6 @@
         "title": "Vergoedingen per automaat",
         "description": "Stel per automaat de vergoeding in voor CAN en PET (EUR). Je kunt tot 4 decimalen gebruiken (bijv. 0.0107).",
         "data": {}
-      },
-      "bin_capacity": {
-        "title": "Bak capaciteit per automaat",
-        "description": "Stel per automaat de maximale inhoud in voor CAN, PET en GLASS. Deze waarden worden gebruikt voor het berekenen van het bin percentage als de API geen bruikbaar percentage teruggeeft.",
-        "data": {}
       }
     },
     "error": {

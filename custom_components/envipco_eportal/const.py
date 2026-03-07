@@ -12,16 +12,8 @@ CONF_MACHINES = "machines"  # list[{"id": "...", "name": "..."}]
 # per machine rates stored in entry.options
 CONF_MACHINE_RATES = "machine_rates"  # dict[rvm_id] = {"can": float, "pet": float}
 
-# per machine bin capacities stored in entry.options
-# dict[rvm_id] = {"can": int, "pet": int, "glass": int}
-CONF_MACHINE_BIN_CAPACITY = "machine_bin_capacity"
-
 DEFAULT_RATE_CAN = 0.0107
 DEFAULT_RATE_PET = 0.0331
-
-DEFAULT_BIN_CAPACITY_CAN = 1200
-DEFAULT_BIN_CAPACITY_PET = 600
-DEFAULT_BIN_CAPACITY_GLASS = 400
 
 DEFAULT_SCAN_INTERVAL = 300  # seconds
 
@@ -44,8 +36,9 @@ STATUS_LAST_REPORT_FALLBACK_KEYS: list[str] = [
 BIN_MATERIAL_PREFIX = "BinInfoMaterialBin"
 BIN_FULL_PREFIX = "BinInfoFullBin"
 BIN_COUNT_PREFIX = "BinInfoCountBin"
+BIN_LIMIT_PREFIX = "BinInfoLimitBin"
 
-# Accepted keys uit rvmStats
+# Accepted keys
 KEY_ACCEPTED_CANS = "cans_accepted"
 KEY_ACCEPTED_PET = "pet_accepted"
 KEY_ACCEPTED_GLASS = "glass_accepted"
